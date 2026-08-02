@@ -54,8 +54,8 @@ The application will start at `http://localhost:3000` (or the port shown in your
 
 ## Team
 
-- Harini Venugopal
 - Harini Vettrivel
+- Harini Venugopal
 - Harshitha T
 - Dhiya Gowda
 
