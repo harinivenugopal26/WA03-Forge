@@ -13,11 +13,14 @@ import {
   Square,
   Smartphone,
   RefreshCw,
-  Info
+  Info,
+  Languages
 } from 'lucide-react';
 import { generateSMSAlert } from '../services/aiService';
 import { calculateImpactScore, getSeverityFromScore } from '../services/dataService';
 import { sendAlertEmail } from '../services/sendAlertEmail';
+
+const LANGUAGE_OPTIONS = ['English', 'Tamil', 'Telugu', 'Kannada', 'Malayalam', 'Hindi'];
 
 export default function AlertEngine({
   districts,
@@ -29,36 +32,32 @@ export default function AlertEngine({
 }) {
   const currentDistrict = districts[selectedDistrictId] || districts.cuddalore;
 
-  // Selected alert level: auto defaults based on score
   const [alertLevel, setAlertLevel] = useState(
     currentDistrict.riskScore >= 85 ? 'EVACUATE' :
     currentDistrict.riskScore >= 75 ? 'WARNING' : 'WATCH'
   );
 
-  // Editable SMS message body
   const [smsText, setSmsText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Selected districts checklist (initialized with current district checked)
+  const [alertLanguage, setAlertLanguage] = useState('English');
+
   const [selectedDistricts, setSelectedDistricts] = useState({
     [currentDistrict.id]: true
   });
 
-  // Recent send confirmation notification state
   const [sentNotification, setSentNotification] = useState(null);
 
-  // Real email alert state
   const [alertEmail, setAlertEmail] = useState('');
-  const [emailStatus, setEmailStatus] = useState(null); // 'sending' | 'success' | 'error'
+  const [emailStatus, setEmailStatus] = useState(null);
 
-  // Auto-generate SMS whenever district or alert level changes
   useEffect(() => {
     handleGenerateSMS();
-  }, [selectedDistrictId, alertLevel, currentDistrict]);
+  }, [selectedDistrictId, alertLevel, currentDistrict, alertLanguage]);
 
   const handleGenerateSMS = async () => {
     setIsGenerating(true);
-    const text = await generateSMSAlert(currentDistrict, apiKey);
+    const text = await generateSMSAlert(currentDistrict, apiKey, alertLanguage);
     setSmsText(text);
     setIsGenerating(false);
   };
@@ -84,6 +83,7 @@ export default function AlertEngine({
       districtName: targetDistrictIds.map(id => districts[id]?.name).join(', '),
       level: alertLevel,
       smsText: smsText,
+      language: alertLanguage,
       recipientCount: totalRecipients,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       status: 'DELIVERED'
@@ -96,7 +96,6 @@ export default function AlertEngine({
       districts: newLog.districtName
     });
 
-    // Send a REAL email if an address was entered
     if (alertEmail) {
       setEmailStatus('sending');
       sendAlertEmail(alertEmail, {
@@ -108,6 +107,7 @@ export default function AlertEngine({
         camp_name: currentDistrict.nearestCamp,
         camp_distance: currentDistrict.campDistance || 'N/A',
         avoid_route: currentDistrict.avoidRoad,
+        language: alertLanguage,
       })
         .then(() => setEmailStatus('success'))
         .catch((err) => {
@@ -122,7 +122,6 @@ export default function AlertEngine({
     }, 6000);
   };
 
-  // Sort districts by Impact Score for sending priority
   const sortedDistricts = Object.values(districts).map(d => {
     const imp = calculateImpactScore(d.riskScore, d.populationAtRisk, d.popDensityFactor, d.hasHospital);
     return {
@@ -134,7 +133,6 @@ export default function AlertEngine({
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Module Title Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-[#151C2C] to-slate-900 p-5 rounded-2xl border border-slate-800 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -150,7 +148,6 @@ export default function AlertEngine({
           </p>
         </div>
 
-        {/* Level Badges */}
         <div className="flex items-center space-x-2 text-xs font-bold">
           <span className="px-2.5 py-1 rounded-lg bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
             WATCH (60-74)
@@ -164,7 +161,6 @@ export default function AlertEngine({
         </div>
       </div>
 
-      {/* Delivery Confirmation Toast Banner */}
       {sentNotification && (
         <div className="bg-emerald-950/90 border-2 border-emerald-500/80 text-emerald-200 p-4 rounded-2xl shadow-2xl flex items-center justify-between animate-bounce">
           <div className="flex items-center space-x-3">
@@ -182,10 +178,8 @@ export default function AlertEngine({
         </div>
       )}
 
-      {/* Main Grid: SMS Composer (Left) & Impact-Prioritized Checklist (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-        {/* Left Column (7 Cols): Claude AI SMS Generator & Composer */}
         <div className="lg:col-span-7 bg-[#151C2C] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
           <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
@@ -197,7 +191,6 @@ export default function AlertEngine({
             </span>
           </div>
 
-          {/* Alert Level Selector */}
           <div className="space-y-2">
             <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
               Select Trigger Alert Level:
@@ -241,7 +234,33 @@ export default function AlertEngine({
             </div>
           </div>
 
-          {/* SMS Content Box */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Languages className="w-3.5 h-3.5 text-blue-400" />
+              Alert Language:
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {LANGUAGE_OPTIONS.map((lang) => (
+                <button
+                  key={lang}
+                  onClick={() => setAlertLanguage(lang)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                    alertLanguage === lang
+                      ? 'bg-blue-500/20 text-blue-300 border-blue-500 ring-2 ring-blue-500/40 shadow-md'
+                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+                  }`}
+                >
+                  {lang}
+                </button>
+              ))}
+            </div>
+            {alertLanguage !== 'English' && !apiKey && (
+              <p className="text-[11px] text-amber-400 font-medium bg-amber-950/40 border border-amber-900/50 rounded-lg px-3 py-1.5">
+                Multilingual generation requires a Claude API key — showing English fallback until a key is added.
+              </p>
+            )}
+          </div>
+
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -249,6 +268,9 @@ export default function AlertEngine({
                 Generated SMS Broadcast Content (Editable):
               </label>
               <div className="flex items-center space-x-2">
+                <span className="text-xs font-mono font-bold text-blue-400">
+                  Generated in: {alertLanguage}
+                </span>
                 <span className={`text-xs font-mono font-bold ${
                   smsText.length > 160 ? 'text-red-400' : 'text-emerald-400'
                 }`}>
@@ -270,12 +292,12 @@ export default function AlertEngine({
                 rows={4}
                 value={smsText}
                 onChange={(e) => setSmsText(e.target.value)}
-                maxLength={160}
+                maxLength={300}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm font-mono text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 leading-relaxed shadow-inner"
-                placeholder="Generating crisp SMS under 160 chars..."
+                placeholder="Generating crisp alert message..."
               />
               <div className="absolute bottom-2.5 right-3 text-[10px] text-slate-500 font-mono">
-                Standard GSM 160-char Single Page Limit
+                Standard GSM 160-char Single Page Limit (English)
               </div>
             </div>
 
@@ -285,7 +307,6 @@ export default function AlertEngine({
             </p>
           </div>
 
-          {/* Real Email Alert Input */}
           <div className="space-y-2">
             <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
               Recipient Email (Real Alert Delivery):
@@ -308,7 +329,6 @@ export default function AlertEngine({
             )}
           </div>
 
-          {/* Send Alert Action Button */}
           <button
             onClick={handleDispatch}
             disabled={networkMode === 'OFFLINE' || smsText.length === 0}
@@ -330,7 +350,6 @@ export default function AlertEngine({
 
         </div>
 
-        {/* Right Column (5 Cols): Impact Score Prioritized District Checklist */}
         <div className="lg:col-span-5 bg-[#151C2C] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
           <div className="border-b border-slate-800/80 pb-3">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
@@ -377,7 +396,6 @@ export default function AlertEngine({
                     </div>
                   </div>
 
-                  {/* Impact Score Badge */}
                   <div className="text-right">
                     <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-black inline-block ${d.impactInfo.badgeColor}`}>
                       IMPACT: {d.impactInfo.label}
@@ -394,7 +412,6 @@ export default function AlertEngine({
 
       </div>
 
-      {/* Alert Dispatch History Log with Timestamps */}
       <div className="bg-[#151C2C] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
         <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
           <h2 className="text-base font-bold text-white flex items-center gap-2">
@@ -424,6 +441,11 @@ export default function AlertEngine({
                       {log.level}
                     </span>
                     <strong className="text-white font-bold">{log.districtName}</strong>
+                    {log.language && (
+                      <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] font-bold">
+                        {log.language}
+                      </span>
+                    )}
                   </div>
                   <p className="font-mono text-slate-300 bg-slate-950 p-2 rounded border border-slate-800">
                     "{log.smsText}"

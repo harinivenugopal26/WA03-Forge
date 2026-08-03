@@ -1,97 +1,83 @@
-// Claude API & Offline AI Fallback Generator for FloodGuard AI
+// FloodGuard AI — Alert Text Generator + Free Multilingual Translation
+
+// Maps our language names to MyMemory's language codes
+const LANGUAGE_CODES = {
+  English: 'en',
+  Tamil: 'ta',
+  Telugu: 'te',
+  Kannada: 'kn',
+  Malayalam: 'ml',
+  Hindi: 'hi'
+};
 
 /**
- * Generate SMS Alert strictly under 160 characters.
- * Uses Claude API if apiKey is provided, otherwise falls back to smart offline template generator.
+ * Translate text using the free MyMemory Translation API.
+ * No API key or signup required.
  */
-export async function generateSMSAlert(districtData, apiKey = null) {
-  if (apiKey) {
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'dangerously-allow-browser': 'true'
-        },
-        body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 100,
-          messages: [{
-            role: 'user',
-            content: `Generate a concise flood evacuation SMS under 160 characters for ${districtData.name}.
-Wards affected: ${districtData.wards.join(',')}.
-Safe Route: ${districtData.safeRoute}.
-Relief Camp: ${districtData.nearestCamp}.
-Road to Avoid: ${districtData.avoidRoad}.
-Format strictly like: FLOOD ALERT-[District] Wd [X,Y] / Leave NOW via [SafeRoute] / Relief: [Camp] / Avoid [BadRoad]. Help:1078`
-          }]
-        })
-      });
+async function translateText(text, targetLanguage) {
+  const targetCode = LANGUAGE_CODES[targetLanguage];
+  if (!targetCode || targetCode === 'en') return text;
 
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.content?.[0]?.text?.trim();
-        if (text && text.length <= 160) {
-          return text;
-        }
+  try {
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetCode}`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      const translated = data?.responseData?.translatedText;
+      if (translated) {
+        return translated;
       }
-    } catch (err) {
-      console.warn('Claude API call failed, falling back to local generator:', err);
     }
+  } catch (err) {
+    console.warn('MyMemory translation failed, using English fallback:', err);
   }
 
-  // Smart Offline Generator (< 160 characters guaranteed)
+  return text; // fallback to English if translation fails
+}
+
+/**
+ * Build the base English SMS alert (deterministic template, always under 160 chars).
+ */
+function buildEnglishSMS(districtData) {
   const wardsStr = districtData.wards?.length > 0 ? districtData.wards.join(',') : 'All';
   const shortCamp = districtData.nearestCamp?.split(' (')[0] || 'Relief Camp';
   const shortRoute = districtData.safeRoute?.split(' ')[0] || districtData.safeRoute;
   const shortAvoid = districtData.avoidRoad?.split(' (')[0] || districtData.avoidRoad;
 
   let sms = `FLOOD ALERT-${districtData.name.toUpperCase()} Wd ${wardsStr} / Leave NOW via ${districtData.safeRoute} / Relief: ${districtData.nearestCamp} / Avoid ${districtData.avoidRoad}. Help:1078`;
-  
+
   if (sms.length > 160) {
     sms = `FLOOD ALERT-${districtData.name.toUpperCase()} Wd ${wardsStr} / Leave NOW via ${shortRoute} / Relief:${shortCamp} / Avoid:${shortAvoid}. Call 1078`;
   }
-  
+
   return sms.slice(0, 160);
 }
 
 /**
- * Generate Risk Explanation line.
+ * Generate SMS Alert, translated into the selected language using the free MyMemory API.
+ * apiKey is no longer required — kept as a parameter for compatibility, unused.
  */
-export async function generateRiskExplanation(districtData, apiKey = null) {
-  if (apiKey) {
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'dangerously-allow-browser': 'true'
-        },
-        body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 80,
-          messages: [{
-            role: 'user',
-            content: `Summarize in ONE sentence why ${districtData.name} has a flood risk score of ${districtData.riskScore}/100.
-Rainfall: ${districtData.rainfall48h}mm in 48h, River level: ${districtData.riverCapacity}%, Soil moisture: ${districtData.soilMoisture}%.`
-          }]
-        })
-      });
+export async function generateSMSAlert(districtData, apiKey = null, language = 'English') {
+  const englishSMS = buildEnglishSMS(districtData);
 
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.content?.[0]?.text?.trim();
-        if (text) return text;
-      }
-    } catch (err) {
-      console.warn('Claude API explanation call failed:', err);
-    }
+  if (language === 'English') {
+    return englishSMS;
   }
 
-  // Fallback line
-  return `High risk due to: ${districtData.rainfall48h}mm rainfall in 48hrs + river at ${districtData.riverCapacity}% capacity + saturated soil from prior week's rain`;
+  const translated = await translateText(englishSMS, language);
+  return translated;
+}
+
+/**
+ * Generate Risk Explanation line, translated into the selected language.
+ */
+export async function generateRiskExplanation(districtData, apiKey = null, language = 'English') {
+  const englishLine = `High risk due to: ${districtData.rainfall48h}mm rainfall in 48hrs + river at ${districtData.riverCapacity}% capacity + saturated soil from prior week's rain`;
+
+  if (language === 'English') {
+    return englishLine;
+  }
+
+  const translated = await translateText(englishLine, language);
+  return translated;
 }
